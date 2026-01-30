@@ -96,7 +96,7 @@ it, then tell Databricks to run it:
       "my-package" \
       "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
       --max-workers 4
-      --env-var MY_SECRET_KEY MY_OTHER_SECRET_KEY
+      --secret-env-var MY_SECRET_KEY --secret-env-var MY_OTHER_SECRET_KEY
     # Output: 123456 (Job ID)
     ```
 
@@ -105,7 +105,8 @@ it, then tell Databricks to run it:
     `--max-workers` argument sets the maximum number of workers for autoscaling.
     You can also pass environment variables to the remote job without leaking secrets
     (like API keys) through your command line. The tool reads the values from your
-    local environment and shuttles the values to Databricks.
+    local environment and uploads them to Databricks Secrets. The job itself will
+    access these secrets using the package name as the scope.
 
 4.  **Start the job**:
 

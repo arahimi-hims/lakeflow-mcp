@@ -24,7 +24,7 @@ def run_ci_test():
         "lakeflow_demo",
         remote_path,
         max_workers=1,
-        env_vars=("TEST_ENV_VAR",),
+        secret_env_vars=("TEST_ENV_VAR",),
     )
     job_id = int(job_id)
     logging.info(f"Job created with ID {job_id}")
@@ -53,8 +53,7 @@ def run_ci_test():
     logging.info("Run completed. Fetching logs...")
     logs = lakeflow.get_run_logs(run_id)
 
-    logging.info("Logs retrieved.")
-    logging.info("-" * 20)
+    logging.info("Logs: " + "-" * 20)
     logging.info(logs)
     logging.info("-" * 20)
 
@@ -67,8 +66,10 @@ def run_ci_test():
         logging.error(f"Test FAILED: Run finished with state {result_state}")
         sys.exit(1)
 
-    if "test_secret_value" not in logs:
-        logging.error("Test FAILED: Test Env Var not found in logs.")
+    # Secrets get automatically redacted in the logs. Instead, check for the
+    # length of the secret.
+    if "Secret length: 17" not in logs:
+        logging.error(f"Test FAILED: Secret didn't come through. Logs:\n{logs}")
         sys.exit(1)
 
     logging.info("Test PASSED: No errors in logs and run succeeded.")

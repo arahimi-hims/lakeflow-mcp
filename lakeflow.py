@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import databricks.sdk
+import databricks.sdk.errors
 import databricks.sdk.service.compute
 import databricks.sdk.service.jobs
 import databricks.sdk.service.workspace
@@ -111,6 +112,17 @@ def get_smallest_node_type() -> str:
     return smallest_node
 
 
+def put_secret_safe(scope: str, key: str, value: str):
+    """Uploads a secret to Databricks Secrets, creating the scope if needed."""
+    try:
+        workspace.secrets.create_scope(scope=scope)
+    except databricks.sdk.errors.ResourceAlreadyExists:
+        pass
+
+    workspace.secrets.put_secret(scope=scope, key=key, string_value=value)
+    logger.info(f"Secret '{key}' uploaded to scope '{scope}'")
+
+
 @export
 def create_job(
     job_name: str,
@@ -118,7 +130,7 @@ def create_job(
     remote_wheel_path: str,
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
-    env_vars: Annotated[tuple[str], typer.Option("--env-var")] = (),
+    secret_env_vars: Annotated[tuple[str], typer.Option("--secret-env-var")] = (),
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -129,8 +141,8 @@ def create_job(
         max_workers: The maximum number of workers for autoscaling. Defaults to 4.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
                              Defaults to 8 * max_workers. If -1, sets to 8 * max_workers.
-        env_vars: A list of environment variable names to pass to the job.
-                  Values are read from the local environment.
+        secret_env_vars: A list of environment variable names to pass to the job as secrets.
+                  Values are read from the local environment and uploaded to Databricks Secrets.
 
     Returns:
         The ID of the created job.
@@ -142,8 +154,12 @@ def create_job(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
 
-    spark_env_vars = {var: os.environ[var] for var in env_vars}
+    # Upload secrets
+    for var in secret_env_vars:
+        put_secret_safe(scope=package_name, key=var, value=os.environ[var])
 
+    # Each worker can support many runs. Assume they can support 8 runs each if
+    # max_concurrent_runs isn't set.
     if max_concurrent_runs is None or max_concurrent_runs == -1:
         max_concurrent_runs = max_workers * 8
 
@@ -173,7 +189,6 @@ def create_job(
                     aws_attributes=databricks.sdk.service.compute.AwsAttributes(
                         ebs_volume_count=1, ebs_volume_size=32
                     ),
-                    spark_env_vars=spark_env_vars,
                 ),
             )
         ],
