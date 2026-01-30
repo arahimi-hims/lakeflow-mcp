@@ -133,6 +133,14 @@ it, then tell Databricks to run it:
 
     This lists the runs for the given job ID.
 
+6.  **Get Run Logs**:
+
+    ```bash
+    python lakeflow.py get-run-logs 987654321
+    ```
+
+    This retrieves the logs for a specific run ID. This takes the run returned by `trigger-run`.
+
 ## Using Python programmatic interface
 
 The above illustrated how to use the CLI. You might find it easier to use the

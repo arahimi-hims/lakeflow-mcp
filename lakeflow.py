@@ -207,7 +207,14 @@ def get_run_logs(run_id: int) -> str:
     Returns:
         The logs as a string.
     """
-    logs = workspace.jobs.get_run_output(run_id).logs
+    # First, get the task run ID from the job run ID
+    job_run = workspace.jobs.get_run(run_id)
+    if job_run.tasks:
+        id = job_run.tasks[0].run_id
+    else:
+        id = run_id
+
+    logs = workspace.jobs.get_run_output(id).logs
     logging.info(logs)
     return logs
 

@@ -57,7 +57,7 @@ def run_ci_test():
         sys.exit(1)
 
     result_state = str(run.state.result_state)
-    if result_state != "SUCCESS":
+    if result_state != "RunResultState.SUCCESS":
         logging.error(f"Test FAILED: Run finished with state {result_state}")
         sys.exit(1)
 
