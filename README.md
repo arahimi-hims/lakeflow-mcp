@@ -19,9 +19,8 @@ computer. For most of our work, wheels provide all the containerization we need
 (a wheel is a few kilobytes).
 
 It has one more opinion: That `uv` is a good way to capture those Python
-dependencies, with a `pyproject.toml`. We're exploring
-[Pants](https://www.pantsbuild.org/) as a way to manage more complex packages,
-but I've recently fallen in love with [uv](https://github.com/astral-sh/uv).
+dependencies, with a `pyproject.toml`. We're also exploring
+[Pants](https://www.pantsbuild.org/) as a way to manage more complex packages. Pants can also export wheels, so nothing in this design prevents us from adoptig Pants.
 
 You can use this tool to build your wheel, upload it to Databricks, spawn copies
 of it each with different command line arguments, and track your jobs's status.
@@ -68,47 +67,31 @@ concrete example of how to set up a package.
 ## Building and launching your package with the CLI
 
 To run the package on the cluster, first build the wheel, then upload
-it, then tell Databricks to run it:
+it, then tell Databricks to run it.
 
-1.  **Build the wheel**:
+1.  **Create the job from source**:
 
-    ```bash
-    uv run lakeflow.py build-wheel ~/my_project
-    # Output: /path/to/dist/my_package-0.1.0-py3-none-any.whl
-    ```
-
-    This outputs the local wheel path, which we'll use in the next step.
-
-2.  **Upload the wheel**:
+    You can use `create-job-from-source` to build, upload, and create the job:
 
     ```bash
-    uv run lakeflow.py upload-wheel /path/to/dist/my_package-0.1.0-py3-none-any.whl
-    # Output: /Users/me/wheels/my_package-0.1.0-py3-none-any.whl
-    ```
-
-    This outputs the remote wheel path, which we'll use in the next step.
-
-3.  **Create the job**:
-
-    ```bash
-    uv run lakeflow.py create-job \
+    uv run lakeflow.py create-job-from-source \
       "my-lakeflow-job" \
       "my-package" \
-      "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
-      --max-workers 4
+      --target ~/my_project \
+      --max-workers 4 \
       --secret-env-var MY_SECRET_KEY --secret-env-var MY_OTHER_SECRET_KEY
-    # Output: 123456 (Job ID)
     ```
 
     This returns the job ID, which we'll use in the next step. This doesn't yet
     run any jobs. It just starts a cluster that can run them. The
     `--max-workers` argument sets the maximum number of workers for autoscaling.
-    You can also pass environment variables to the remote job without leaking secrets
-    (like API keys) through your command line. The tool reads the values from your
-    local environment and uploads them to Databricks Secrets. The job itself will
-    access these secrets using the package name as the scope.
+    You can also pass environment variables to the remote job without leaking
+    secrets (like API keys) through your command line. The tool reads the values
+    from your local environment and uploads them to Databricks Secrets. The job
+    can access these secrets using the Databricks dbutils API, with its own
+    package name as the scope.
 
-4.  **Start the job**:
+2.  **Start the job**:
 
     ```bash
     uv run lakeflow.py trigger-run 123456 arg11 arg12
@@ -122,7 +105,7 @@ it, then tell Databricks to run it:
     arguments through argv. It can retrieve its job id from the environment
     variable `DATABRICKS_RUN_ID`.
 
-5.  **Monitor the runs**:
+3.  **Monitor the runs**:
 
     ```bash
     uv run lakeflow.py list-job-runs 123456
@@ -130,7 +113,7 @@ it, then tell Databricks to run it:
 
     This lists the runs for the given job ID.
 
-6.  **Get Run Logs**:
+4.  **Get Run Logs**:
 
     ```bash
     uv run lakeflow.py get-run-logs 987654321

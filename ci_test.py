@@ -6,23 +6,15 @@ import logging
 
 
 def run_ci_test():
-    logging.info("Building wheel...")
-    wheel_path = lakeflow.build_wheel("lakeflow_demo")
-    logging.info(f"Wheel built at {wheel_path}")
-
-    logging.info("Uploading wheel...")
-    remote_path = lakeflow.upload_wheel(wheel_path)
-    logging.info(f"Wheel uploaded to {remote_path}")
-
-    logging.info("Creating job...")
+    logging.info("Creating job from source...")
 
     os.environ["TEST_ENV_VAR"] = "test_secret_value"
 
     # Launch on just one worker
-    job_id = lakeflow.create_job(
-        f"ci-test-{int(time.time())}",
-        "lakeflow_demo",
-        remote_path,
+    job_id = lakeflow.create_job_from_source(
+        job_name=f"ci-test-{int(time.time())}",
+        package_name="lakeflow_demo",
+        target="lakeflow_demo",
         max_workers=1,
         secret_env_vars=("TEST_ENV_VAR",),
     )

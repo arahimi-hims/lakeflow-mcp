@@ -23,6 +23,7 @@ mcp = mcp.server.fastmcp.FastMCP(
 1. Build the wheel using build_wheel().
 2. Upload the wheel using upload_wheel().
 3. Run it by creating a job with create_job() and then triggering it with trigger_run().
+   Alternatively, use create_job_from_source() to do steps 1-3 in one go.
 4. Run a copy by calling trigger_run() again.
 5. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
 6. Get a list of running jobs using list_job_runs().""",
@@ -197,6 +198,38 @@ def create_job(
     logger.info(f"View Job: {workspace.config.host}/#job/{created_job.job_id}")
     logger.info(f"Job ID: {created_job.job_id}")
     return str(created_job.job_id)
+
+
+@export
+def create_job_from_source(
+    job_name: str,
+    package_name: str,
+    target: Annotated[str, typer.Option("--target")] = ".",
+    max_workers: int = 4,
+    max_concurrent_runs: Optional[int] = None,
+    secret_env_vars: Annotated[tuple[str], typer.Option("--secret-env-var")] = (),
+) -> str:
+    """Builds wheel, uploads it, and creates a Databricks job in one go.
+
+    Args:
+        job_name: The name of the job to create.
+        package_name: The name of the Python package.
+        target: The path to the directory containing pyproject.toml. Defaults to ".".
+        max_workers: The maximum number of workers for autoscaling. Defaults to 4.
+        max_concurrent_runs: The maximum number of concurrent runs for the job.
+        secret_env_vars: A list of environment variable names to pass to the job as secrets.
+
+    Returns:
+        The ID of the created job.
+    """
+    return create_job(
+        job_name=job_name,
+        package_name=package_name,
+        remote_wheel_path=upload_wheel(build_wheel(target)),
+        max_workers=max_workers,
+        max_concurrent_runs=max_concurrent_runs,
+        secret_env_vars=secret_env_vars,
+    )
 
 
 @export
