@@ -49,7 +49,8 @@ def build_wheel(target: Annotated[str, typer.Argument()] = ".") -> str:
     """Builds the Python wheel using 'uv build --wheel'.
 
     Args:
-        target: The path to the directory containing pyproject.toml.
+        target: The path to the directory containing pyproject.toml. To avoid
+            confusing uv, it's best to use absolute paths.
 
     Returns:
         The path to the generated wheel file.
@@ -232,13 +233,13 @@ def list_job_runs(job_id: int) -> List[dict]:
     Args:
         job_id: The ID of the job to list runs for.
     """
-    runs = workspace.jobs.list_runs(job_id=job_id, expand_tasks=False)
+    runs = list(workspace.jobs.list_runs(job_id=job_id, expand_tasks=False))
     logger.info(
         "\n".join(
             f"{r.run_id}: {r.state.life_cycle_state} - {r.run_page_url}" for r in runs
         )
     )
-    return [run.as_dict() for run in runs]
+    return [r.as_dict() for r in runs]
 
 
 if __name__ == "__main__":

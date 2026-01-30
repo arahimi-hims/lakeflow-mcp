@@ -33,6 +33,12 @@ def run_ci_test():
     run_id = lakeflow.trigger_run(job_id, ["ci_test_param"])
     logging.info(f"Run triggered with ID {run_id}")
 
+    logging.info("Verifying job runs...")
+    runs = lakeflow.list_job_runs(job_id)
+    if len(runs) != 1:
+        logging.error(f"Test FAILED: Expected exactly 1 job run, found {len(runs)}")
+        sys.exit(1)
+
     logging.info("Waiting for run to complete...")
     while True:
         run = lakeflow.workspace.jobs.get_run(run_id)
