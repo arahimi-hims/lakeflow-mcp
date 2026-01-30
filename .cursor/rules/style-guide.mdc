@@ -1,0 +1,53 @@
+---
+description: Python import style guide - avoid direct class imports
+globs: **/*.py
+alwaysApply: false
+---
+
+# Python Import Style
+
+## Avoid Importing Classes Directly
+
+Do not import classes directly from modules. Instead, import the module and refer to the class as a member of the module.
+
+**Exception**: Members of the `typing` module (e.g., `List`, `Optional`, `Dict`, `Any`) may be imported directly.
+
+### ❌ BAD
+
+```python
+from my_module import MyClass
+from other_module import OtherClass
+
+obj = MyClass()
+```
+
+### ✅ GOOD
+
+```python
+import my_module
+import other_module
+from typing import List, Optional
+
+obj = my_module.MyClass()
+def func(args: List[str]) -> Optional[int]:
+    pass
+```
+
+This makes it clearer where classes come from and avoids naming conflicts, while keeping type hints concise.
+
+## Inline Single-Use Variables
+
+If a variable is used only once and its name doesn't provide significant documentation value or aid debugging, inline it.
+
+### ❌ BAD
+
+```python
+job_name = f"my-job-{timestamp}"
+client.create_job(name=job_name)
+```
+
+### ✅ GOOD
+
+```python
+client.create_job(name=f"my-job-{timestamp}")
+```
