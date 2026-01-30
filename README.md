@@ -1,32 +1,26 @@
 # Launching jobs on Lakeflow
 
-Lakeflow is Databrick's way to manage jobs on a cluster. Databricks lets you
-edit scripts in their UI (they call these "notebooks"). That's too simple for
-some our more complex experiments. Thankfully, Databricks supports lots of
-other ways to submit jobs.
-
-This tool is an opinionated way to spawn jobs on Databricks: It asks you author
-your code as a Python package, which forces you to specific its dependencies. It
-then uploads that package (as a python wheel) for Databricks to run it. This is
-heavier-weight than Databrick's notebook approach of shipping scripts, but it
-lets you capture large package dependencies across repos via git submodules.
-It's lighter weight than other job submisison systems that operate on docker
-containers. For most of our work, wheels represent all the containerization we
-neeed.
+This tool is an opinionated way to spawn jobs on Databricks: It asks you to
+author your code as a Python package. It forces you to specify your package
+dependencies in a `pyproject.toml`. It then uploads that package (as a python
+wheel) for Databricks to execute it. This is heavier-weight than Databrick's
+built-in notebook approach of shipping scripts, but it lets you capture large
+package dependencies across repos via git submodules. It's lighter-weight than
+other job submission systems because it doesn't require you to build docker
+containers. For most of our work, wheels provide all the containerization we
+need.
 
 It has one more opinion: that `uv` is a good way to capture those Python
 dependencies, with a `pyproject.toml`.
 
-Once you have your packaged defined in a `pyproject.toml`, you can use this tool
-to build the wheel, upload it to Databricks, and spawn copies of it with
-different command line arguments. Databricks gives you a UI to check the state
-of your jobs.
-
+You can use this tool to build your wheel, upload it to Databricks, spawn copies
+of it with different command line arguments, and track your job's status. You
+can also use Databrick's UI to check the state of your jobs.
 The tool provides several interfaces:
 
+- An MCP server so you can have AIs spawn jobs for you.
 - A CLI you can use from the shell.
-- An MCP server you can connect to from an AI agent.
-- A set of Python functions you can call from a Python program.
+- A programmatic Python interface you can call from a Python program.
 
 ## Getting access to Databricks
 
@@ -58,7 +52,7 @@ script called `my_package_py.py`, and the main function this script is called
 lakeflow-task = "my_package.my_package_py:main"
 ```
 
-The pakage [`lakeflow_demo`](lakeflow_demo) under this directory gives you a
+The package [`lakeflow_demo`](lakeflow_demo) under this directory gives you a
 concrete example of this.
 
 ## Building and launching your package with the CLI
@@ -87,7 +81,7 @@ it, then tell Databricks to run it:
 3.  **Create the Job**:
 
     ```bash
-    python lakeflow.py create-job \
+    uv run lakeflow.py create-job \
       "my-lakeflow-job" \
       "my-package" \
       "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
@@ -106,7 +100,7 @@ it, then tell Databricks to run it:
 
     ```bash
     export MY_SECRET_KEY="secret-value"
-    python lakeflow.py create-job \
+    uv run lakeflow.py create-job \
       "my-lakeflow-job" \
       "my-package" \
       "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
@@ -116,7 +110,7 @@ it, then tell Databricks to run it:
 4.  **Trigger a Run**:
 
     ```bash
-    python lakeflow.py trigger-run 123456 argv1 argv2
+    uv run lakeflow.py trigger-run 123456 argv1 argv2
     ```
 
     This starts one instance of the job with the given arguments. If you have
@@ -128,7 +122,7 @@ it, then tell Databricks to run it:
 5.  **Monitor the Runs**:
 
     ```bash
-    python lakeflow.py list-job-runs 123456
+    uv run lakeflow.py list-job-runs 123456
     ```
 
     This lists the runs for the given job ID.
@@ -136,7 +130,7 @@ it, then tell Databricks to run it:
 6.  **Get Run Logs**:
 
     ```bash
-    python lakeflow.py get-run-logs 987654321
+    uv run lakeflow.py get-run-logs 987654321
     ```
 
     This retrieves the logs for a specific run ID. This takes the run returned by `trigger-run`.
@@ -155,18 +149,18 @@ You can install this package as an MCP server. To do that, add this to `~/.curso
 {
   "mcpServers": {
     "lakeflow": {
-      "command": "/Users/arahimi/.local/bin/uv",
+      "command": "uv",
       "args": [
         "run",
         "--quiet",
         "--directory",
-        "/Users/arahimi/lakeflow-mcp",
+        "/path/to/lakeflow-mcp",
         "python",
         "lakeflow.py"
       ],
       "env": {
         "DATABRICKS_HOST": "https://hims-machine-learning-staging-workspace.cloud.databricks.com",
-        "DATABRICKS_TOKEN": "<your tocken>>"
+        "DATABRICKS_TOKEN": "<your token>"
       }
     },
     ...
