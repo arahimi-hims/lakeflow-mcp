@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 import glob
 import logging
 import os
@@ -116,6 +116,7 @@ def create_job(
     package_name: str,
     remote_wheel_path: str,
     max_workers: int = 4,
+    max_concurrent_runs: Optional[int] = None,
     env_vars: Annotated[tuple[str], typer.Option("--env-var")] = (),
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
@@ -125,6 +126,8 @@ def create_job(
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
         max_workers: The maximum number of workers for autoscaling. Defaults to 4.
+        max_concurrent_runs: The maximum number of concurrent runs for the job.
+                             Defaults to 8 * max_workers. If -1, sets to 8 * max_workers.
         env_vars: A list of environment variable names to pass to the job.
                   Values are read from the local environment.
 
@@ -140,9 +143,12 @@ def create_job(
 
     spark_env_vars = {var: os.environ[var] for var in env_vars}
 
+    if max_concurrent_runs is None or max_concurrent_runs == -1:
+        max_concurrent_runs = max_workers * 8
+
     created_job = workspace.jobs.create(
         name=job_name,
-        max_concurrent_runs=10,
+        max_concurrent_runs=max_concurrent_runs,
         tasks=[
             databricks.sdk.service.jobs.Task(
                 task_key="wheel_task",
