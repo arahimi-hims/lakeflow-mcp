@@ -90,12 +90,15 @@ it, then tell Databricks to run it:
     python lakeflow.py create-job \
       "my-lakeflow-job" \
       "my-package" \
-      "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl"
+      "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
+      --max-workers 4
     # Output: 123456 (Job ID)
     ```
 
     This returns the job ID, which we'll use in the next step.
     This doesn't yet run any jobs. It just starts a cluster that can run them.
+    The `--max-workers` argument sets the maximum number of workers for
+    autoscaling.
 
 4.  **Trigger a Run**:
 

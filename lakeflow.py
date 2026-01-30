@@ -12,11 +12,11 @@ import databricks.sdk.service.compute
 import databricks.sdk.service.jobs
 import databricks.sdk.service.workspace
 import typer
-from mcp.server.fastmcp import FastMCP
+import mcp.server.fastmcp
 
 app = typer.Typer()
 
-mcp = FastMCP(
+mcp = mcp.server.fastmcp.FastMCP(
     "lakeflow",
     instructions="""To use this server:
 1. Build the wheel using build_wheel().
@@ -115,6 +115,7 @@ def create_job(
     job_name: str,
     package_name: str,
     remote_wheel_path: str,
+    max_workers: int = 4,
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -122,6 +123,7 @@ def create_job(
         job_name: The name of the job to create.
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
+        max_workers: The maximum number of workers for autoscaling. Defaults to 4.
 
     Returns:
         The ID of the created job.
@@ -154,7 +156,7 @@ def create_job(
                     ),
                     node_type_id=get_smallest_node_type(),
                     autoscale=databricks.sdk.service.compute.AutoScale(
-                        min_workers=1, max_workers=4
+                        min_workers=1, max_workers=max_workers
                     ),
                     aws_attributes=databricks.sdk.service.compute.AwsAttributes(
                         ebs_volume_count=1, ebs_volume_size=32
@@ -187,6 +189,21 @@ def trigger_run(
     run = workspace.jobs.run_now(job_id=job_id, python_params=job_args)
     logger.info(f" - Started Run ID {run.run_id}")
     return run.run_id
+
+
+@export
+def get_run_logs(run_id: int) -> str:
+    """Retrieves the driver logs for a specific run.
+
+    Args:
+        run_id: The ID of the run.
+
+    Returns:
+        The logs as a string.
+    """
+    logs = workspace.jobs.get_run_output(run_id).logs
+    logging.info(logs)
+    return logs
 
 
 @export
