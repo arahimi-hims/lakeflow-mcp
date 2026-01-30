@@ -14,6 +14,7 @@ def main():
         custom_param = "default"
 
     print("My parameter:", custom_param)
+    print("Test Env Var:", os.environ.get("TEST_ENV_VAR"))
     print("Numpy result:", np.random.rand(5, 5).sum())
     print(f"Task {task_id} completed successfully!")
 

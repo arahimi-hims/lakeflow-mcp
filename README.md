@@ -100,6 +100,19 @@ it, then tell Databricks to run it:
     The `--max-workers` argument sets the maximum number of workers for
     autoscaling.
 
+    You can also pass environment variables to the job. This is useful for passing
+    secrets (like API keys) to your job. The tool reads the values from your local
+    environment variables to keep secrets out of the command line arguments:
+
+    ```bash
+    export MY_SECRET_KEY="secret-value"
+    python lakeflow.py create-job \
+      "my-lakeflow-job" \
+      "my-package" \
+      "/Users/me/wheels/my_package-0.1.0-py3-none-any.whl" \
+      --env-var MY_SECRET_KEY MY_OTHER_SECRET_KEY
+    ```
+
 4.  **Trigger a Run**:
 
     ```bash

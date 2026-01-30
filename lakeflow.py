@@ -116,6 +116,7 @@ def create_job(
     package_name: str,
     remote_wheel_path: str,
     max_workers: int = 4,
+    env_vars: Annotated[tuple[str], typer.Option("--env-var")] = (),
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -124,6 +125,8 @@ def create_job(
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
         max_workers: The maximum number of workers for autoscaling. Defaults to 4.
+        env_vars: A list of environment variable names to pass to the job.
+                  Values are read from the local environment.
 
     Returns:
         The ID of the created job.
@@ -134,6 +137,8 @@ def create_job(
         raise ValueError(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
+
+    spark_env_vars = {var: os.environ[var] for var in env_vars}
 
     created_job = workspace.jobs.create(
         name=job_name,
@@ -161,6 +166,7 @@ def create_job(
                     aws_attributes=databricks.sdk.service.compute.AwsAttributes(
                         ebs_volume_count=1, ebs_volume_size=32
                     ),
+                    spark_env_vars=spark_env_vars,
                 ),
             )
         ],
