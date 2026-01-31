@@ -159,3 +159,38 @@ Then you can ask the agent to do things like this:
 ```
 let's launch 4 copies of this job on lakeflow, and pass them the arguments "fi", "fie", "fo", and "fum" respectively.
 ```
+
+# Alternative designs considered
+
+My objective was to build a job submission system that:
+
+1. Python first: Could run Python packages with ~100s of Python files, and 3rd party dependencies.
+2. Versioned artifacts: Have versioned source and output.
+3. Workflow orchestration: Could break down its steps into tasks that could be cached, checkpointed, retried, and resumed under a workflow orchestrator.
+4. Native-capable: Could accommodate a small amount of non-Python code code written in Rust, C++, or Dafny.
+5. Small scale: Runs jobs on ~100s of remote workers in parallel, for ~20 engineers simultaneously.
+
+The ideal system would use [Prefect](https://www.prefect.io/) as a workflow
+orchestrator, on top of thexisting kubernetes scaffolding we currently use to
+run staging and prod. There are many workflow orchestrators, but Prefect is
+the only one that provides all of the workflow functionality listed above. The
+ideal system would be a Prefect front-end VM, which scales a kubernetes cluster
+up and down on demand. Rolling this out would have taken some conversations
+with the devops team, and introducing a new tech stack to the company. The time
+for this will come soon, but this package is not that.
+
+In the mean time, this package uses a tech stack the Data Engineering team is
+already using. They already use Databricks to run notebooks, and their
+expertise with Databricks helped me ramp up quickly on this solution. Databricks
+notebooks are small python files the DE team edits in the Databricks UI. These
+scripts are versioned under Git. Databricks does provide a workflow
+orchestrator, but the team uses Airflow for their bigger jobs. In all, the tech
+stack the Data Processing team already uses provides 70% of the functionality I
+was trying to devlop. So I decided to build on top of it instead of building an
+alternative to it. This package upgrades our existing tech stack to support much
+larger Python packages via Python wheels (not
+just notebooks).
+
+You'll notice that this package doesn't provide any workflow orchestration.
+That's to come. Databricks provides some rudimentary workflow capabilities,
+which I'll gradually incorporate into this system.
