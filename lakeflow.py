@@ -155,9 +155,12 @@ def create_job(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
 
-    # Upload secrets
+    # Upload secrets into a scope that's unique to this user + package. Since
+    # the remote wheel is writeable only by this user, its path name is a good
+    # bet.
+    secret_scope = remote_wheel_path.replace("/", "-")
     for var in secret_env_vars:
-        put_secret_safe(scope=package_name, key=var, value=os.environ[var])
+        put_secret_safe(scope=secret_scope, key=var, value=os.environ[var])
 
     # Each worker can support many runs. Assume they can support 8 runs each if
     # max_concurrent_runs isn't set.
@@ -184,6 +187,7 @@ def create_job(
                         long_term_support=True
                     ),
                     node_type_id=get_smallest_node_type(),
+                    spark_env_vars={"LAKEFLOW_SECRET_SCOPE": secret_scope},
                     autoscale=databricks.sdk.service.compute.AutoScale(
                         min_workers=1, max_workers=max_workers
                     ),
