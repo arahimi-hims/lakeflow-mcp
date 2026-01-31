@@ -171,7 +171,7 @@ My objective was to build a job submission system that:
 5. Small scale: Runs jobs on ~100s of remote workers in parallel, for ~20 engineers simultaneously.
 
 The ideal system would use [Prefect](https://www.prefect.io/) as a workflow
-orchestrator, on top of thexisting kubernetes scaffolding we currently use to
+orchestrator, on top of the existing kubernetes scaffolding we currently use to
 run staging and prod. There are many workflow orchestrators, but Prefect is
 the only one that provides all of the workflow functionality listed above. The
 ideal system would be a Prefect front-end VM, which scales a kubernetes cluster
