@@ -188,6 +188,7 @@ def create_job(
                     ),
                     node_type_id=get_smallest_node_type(),
                     spark_env_vars={"LAKEFLOW_SECRET_SCOPE": secret_scope},
+                    data_security_mode=databricks.sdk.service.compute.DataSecurityMode.SINGLE_USER,
                     autoscale=databricks.sdk.service.compute.AutoScale(
                         min_workers=1, max_workers=max_workers
                     ),
