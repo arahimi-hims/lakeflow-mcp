@@ -131,7 +131,7 @@ def create_job(
     remote_wheel_path: str,
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
-    secret_env_vars: Annotated[tuple[str, ...], typer.Option("--secret-env-var")] = (),
+    secret_env_vars: Annotated[List[str], typer.Option("--secret-env-var")] = [],
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -212,7 +212,7 @@ def create_job_from_source(
     target: Annotated[str, typer.Option("--target")] = ".",
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
-    secret_env_vars: Annotated[tuple[str, ...], typer.Option("--secret-env-var")] = (),
+    secret_env_vars: Annotated[List[str], typer.Option("--secret-env-var")] = [],
 ) -> str:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
