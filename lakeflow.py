@@ -26,7 +26,8 @@ mcp = mcp.server.fastmcp.FastMCP(
    Alternatively, use create_job_from_source() to do steps 1-3 in one go.
 4. Run a copy by calling trigger_run() again.
 5. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
-6. Get a list of running jobs using list_job_runs().""",
+6. Pass secrets via trigger_run(job_id, [...], secret_env_vars=["MY_KEY"]).
+7. Get a list of running jobs using list_job_runs().""",
 )
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,6 @@ def create_job(
     remote_wheel_path: str,
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
-    secret_env_vars: Annotated[List[str], typer.Option("--secret-env-var")] = [],
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -139,11 +139,8 @@ def create_job(
         job_name: The name of the job to create.
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
-        max_workers: The maximum number of workers for autoscaling. Defaults to 4.
+        max_workers: The maximum number of workers for autoscaling.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
-                             Defaults to 8 * max_workers. If -1, sets to 8 * max_workers.
-        secret_env_vars: A list of environment variable names to pass to the job as secrets.
-                  Values are read from the local environment and uploaded to Databricks Secrets.
 
     Returns:
         The ID of the created job.
@@ -155,15 +152,6 @@ def create_job(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
 
-    # Upload secrets into a scope that's unique to this user + package. Since
-    # the remote wheel is writeable only by this user, its path name is a good
-    # bet.
-    secret_scope = remote_wheel_path.replace("/", "-")
-    for var in secret_env_vars:
-        put_secret_safe(scope=secret_scope, key=var, value=os.environ[var])
-
-    # Each worker can support many runs. Assume they can support 8 runs each if
-    # max_concurrent_runs isn't set.
     if max_concurrent_runs is None or max_concurrent_runs == -1:
         max_concurrent_runs = max_workers * 8
 
@@ -187,7 +175,6 @@ def create_job(
                         long_term_support=True
                     ),
                     node_type_id=get_smallest_node_type(),
-                    spark_env_vars={"LAKEFLOW_SECRET_SCOPE": secret_scope},
                     data_security_mode=databricks.sdk.service.compute.DataSecurityMode.SINGLE_USER,
                     autoscale=databricks.sdk.service.compute.AutoScale(
                         min_workers=1, max_workers=max_workers
@@ -212,7 +199,6 @@ def create_job_from_source(
     target: Annotated[str, typer.Option("--target")] = ".",
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
-    secret_env_vars: Annotated[List[str], typer.Option("--secret-env-var")] = [],
 ) -> str:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
@@ -222,7 +208,6 @@ def create_job_from_source(
         target: The path to the directory containing pyproject.toml. Defaults to ".".
         max_workers: The maximum number of workers for autoscaling. Defaults to 4.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
-        secret_env_vars: A list of environment variable names to pass to the job as secrets.
 
     Returns:
         The ID of the created job.
@@ -233,25 +218,35 @@ def create_job_from_source(
         remote_wheel_path=upload_wheel(build_wheel(target)),
         max_workers=max_workers,
         max_concurrent_runs=max_concurrent_runs,
-        secret_env_vars=secret_env_vars,
     )
 
 
 @export
 def trigger_run(
-    job_id: int, job_args: Annotated[List[str], typer.Argument()] = None
+    job_id: int,
+    job_args: Annotated[List[str], typer.Argument()] = None,
+    secret_env_vars: Annotated[List[str], typer.Option("--secret-env-var")] = [],
 ) -> int:
     """Triggers a run of the specified job.
+
+    When secret_env_vars is provided, the values are read from the local
+    environment, uploaded to Databricks Secrets under a scope named after the
+    job, and ``--lakeflow-secret-scope <scope>`` is prepended to the task's
+    command-line arguments so the task can locate its secrets.
 
     Args:
         job_id: The ID of the job to run.
         job_args: A list of Python parameters to pass to the run.
-
-    Returns:
-        The ID of the triggered run.
+        secret_env_vars: Environment variable names whose values should be
+            uploaded to Databricks Secrets and made available to the task.
     """
     if job_args is None:
         job_args = []
+    if secret_env_vars:
+        scope = f"lakeflow-job-{job_id}"
+        for var in secret_env_vars:
+            put_secret_safe(scope=scope, key=var, value=os.environ[var])
+        job_args = ["--lakeflow-secret-scope", scope] + list(job_args)
     run = workspace.jobs.run_now(job_id=job_id, python_params=job_args)
     logger.info(f" - Started Run ID {run.run_id}")
     return run.run_id

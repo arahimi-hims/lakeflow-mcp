@@ -16,13 +16,14 @@ def run_ci_test():
         package_name="lakeflow_demo",
         target="lakeflow_demo",
         max_workers=1,
-        secret_env_vars=("TEST_ENV_VAR",),
     )
     job_id = int(job_id)
     logging.info(f"Job created with ID {job_id}")
 
     logging.info("Triggering run...")
-    run_id = lakeflow.trigger_run(job_id, ["ci_test_param"])
+    run_id = lakeflow.trigger_run(
+        job_id, ["ci_test_param"], secret_env_vars=["TEST_ENV_VAR"],
+    )
     logging.info(f"Run triggered with ID {run_id}")
 
     logging.info("Verifying job runs...")

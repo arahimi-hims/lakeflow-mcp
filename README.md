@@ -78,18 +78,12 @@ it, then tell Databricks to run it.
       "my-lakeflow-job" \
       "my-package" \
       --target ~/my_project \
-      --max-workers 4 \
-      --secret-env-var MY_SECRET_KEY --secret-env-var MY_OTHER_SECRET_KEY
+      --max-workers 4
     ```
 
     This returns the job ID, which we'll use in the next step. This doesn't yet
     run any jobs. It just starts a cluster that can run them. The
     `--max-workers` argument sets the maximum number of workers for autoscaling.
-    You can also pass environment variables to the remote job without leaking
-    secrets (like API keys) through your command line. The tool reads the values
-    from your local environment and uploads them to Databricks Secrets. The job
-    can access these secrets using the Databricks dbutils API, with its own
-    package name as the scope.
 
 2.  **Start the job**:
 
@@ -104,6 +98,19 @@ it, then tell Databricks to run it.
     kick off as many parallel jobs as you want. Your job can retrieve these
     arguments through argv. It can retrieve its job id from the environment
     variable `DATABRICKS_RUN_ID`.
+
+    You can also pass environment variables to the remote job without leaking
+    secrets (like API keys) through your command line:
+
+    ```bash
+    uv run lakeflow.py trigger-run 123456 arg1 arg2 \
+      --secret-env-var MY_SECRET_KEY --secret-env-var MY_OTHER_SECRET_KEY
+    ```
+
+    The tool reads the values from your local environment, uploads them to
+    Databricks Secrets, and passes `--lakeflow-secret-scope <scope>` as a
+    command-line argument to the task. Your task can then retrieve secrets using
+    the Databricks dbutils API with that scope name.
 
 3.  **Monitor the runs**:
 
