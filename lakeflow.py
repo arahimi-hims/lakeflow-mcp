@@ -160,6 +160,7 @@ def create_cluster(max_workers: int = 4) -> str:
         aws_attributes=databricks.sdk.service.compute.AwsAttributes(
             ebs_volume_count=1, ebs_volume_size=32
         ),
+        autotermination_minutes=10,
     )
     logger.info(f"Cluster created: {cluster.cluster_id}")
     return cluster.cluster_id
