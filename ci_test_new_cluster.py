@@ -47,7 +47,7 @@ def run_ci_test():
         time.sleep(30)
 
     logging.info("Run completed. Fetching logs...")
-    logs = lakeflow.get_run_logs(run_id)
+    logs = lakeflow.get_run_logs(run_id)["logs"]
 
     logging.info("Logs: " + "-" * 20)
     logging.info(logs)

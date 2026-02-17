@@ -300,7 +300,7 @@ def get_run_logs(run_id: int) -> str:
     else:
         id = run_id
 
-    logs = workspace.jobs.get_run_output(id).logs
+    logs = workspace.jobs.get_run_output(id).as_dict()
     logging.info(logs)
     return logs
 
