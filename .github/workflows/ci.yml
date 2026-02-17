@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  ci-test:
+  ci-test-new-cluster:
     runs-on: ubuntu-latest
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -27,5 +27,29 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run CI Test
-        run: uv run ci_test.py
+      - name: Run CI Test (new cluster)
+        run: uv run ci_test_new_cluster.py
+
+  ci-test-existing-cluster:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run CI Test (existing cluster)
+        run: uv run ci_test_existing_cluster.py

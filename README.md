@@ -71,7 +71,8 @@ it, then tell Databricks to run it.
 
 1.  **Create the job from source**:
 
-    You can use `create-job-from-source` to build, upload, and create the job:
+    You can use `create-job-from-source` to build, upload, and create the job.
+    If you don't pass a `--cluster-id`, a new cluster is created automatically:
 
     ```bash
     uv run lakeflow.py create-job-from-source \
@@ -83,7 +84,29 @@ it, then tell Databricks to run it.
 
     This returns the job ID, which we'll use in the next step. This doesn't yet
     run any jobs. It just starts a cluster that can run them. The
-    `--max-workers` argument sets the maximum number of workers for autoscaling.
+    `--max-workers` argument sets the maximum number of workers for autoscaling
+    on the new cluster.
+
+    To use an existing cluster instead, pass `--cluster-id`:
+
+    ```bash
+    uv run lakeflow.py create-job-from-source \
+      "my-lakeflow-job" \
+      "my-package" \
+      --target ~/my_project \
+      --cluster-id 0202-235755-w37hoxe8
+    ```
+
+    If the cluster is not running, it will be started automatically.
+
+    You can also create a cluster explicitly and reuse it across multiple jobs:
+
+    ```bash
+    uv run lakeflow.py create-cluster --max-workers 4
+    ```
+
+    This returns a cluster ID you can pass to `create-job-from-source` or
+    `create-job` via `--cluster-id`.
 
 2.  **Start the job**:
 

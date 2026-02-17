@@ -19,16 +19,22 @@ if lakeflow.workspace:
 remote_wheel_path = lakeflow.upload_wheel(lakeflow.build_wheel("lakeflow_demo"))
 
 # %%
-# 2. Define the Lakeflow Job configuration
-job_id = lakeflow.create_job(
-    job_name=f"lakeflow-demo-wheel-{int(time.time())}",
-    package_name="lakeflow_demo",
-    remote_wheel_path=remote_wheel_path,
-)
-job_id = int(job_id)  # create_job returns str now
+# 2. Create a cluster
+cluster_id = lakeflow.create_cluster()
 
 # %%
-# 3. Kick off several copies simultaneously
+# 3. Define the Lakeflow Job configuration
+job_id = int(
+    lakeflow.create_job(
+        job_name=f"lakeflow-demo-wheel-{int(time.time())}",
+        package_name="lakeflow_demo",
+        remote_wheel_path=remote_wheel_path,
+        cluster_id=cluster_id,
+    )
+)
+
+# %%
+# 4. Kick off several copies simultaneously
 num_copies = 5
 print(f"\nKicking off {num_copies} runs simultaneously...")
 
@@ -36,7 +42,7 @@ for i in range(num_copies):
     lakeflow.trigger_run(job_id, [f"parameter_from_run_{i + 1}"])
 
 # %%
-# 4. Monitor results
+# 5. Monitor results
 for run in lakeflow.list_job_runs(job_id=job_id):
     state_info = run.get("state", {})
     state = (

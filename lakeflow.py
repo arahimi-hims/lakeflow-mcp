@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import databricks.sdk
 import databricks.sdk.errors
@@ -22,12 +23,14 @@ mcp = mcp.server.fastmcp.FastMCP(
     instructions="""To use this server:
 1. Build the wheel using build_wheel().
 2. Upload the wheel using upload_wheel().
-3. Run it by creating a job with create_job() and then triggering it with trigger_run().
-   Alternatively, use create_job_from_source() to do steps 1-3 in one go.
-4. Run a copy by calling trigger_run() again.
-5. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
-6. Pass secrets via trigger_run(job_id, [...], secret_env_vars=["MY_KEY"]).
-7. Get a list of running jobs using list_job_runs().""",
+3. Create or reuse a cluster with create_cluster(), or use an existing cluster ID.
+4. Create the job with create_job(cluster_id=...) and trigger it with trigger_run().
+   Alternatively, use create_job_from_source() to do steps 1-4 in one go
+   (it creates a cluster automatically when cluster_id is not provided).
+5. Run a copy by calling trigger_run() again.
+6. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
+7. Pass secrets via trigger_run(job_id, [...], secret_env_vars=["MY_KEY"]).
+8. Get a list of running jobs using list_job_runs().""",
 )
 logger = logging.getLogger(__name__)
 
@@ -126,20 +129,61 @@ def put_secret_safe(scope: str, key: str, value: str):
 
 
 @export
+def ensure_cluster_running(cluster_id: str) -> str:
+    """Starts the cluster if it's not already running and waits until it's ready."""
+    logger.info(f"Ensuring cluster {cluster_id} is running...")
+    workspace.clusters.ensure_cluster_is_running(cluster_id)
+    state = workspace.clusters.get(cluster_id).state.value
+    logger.info(f"Cluster {cluster_id} is {state}")
+    return state
+
+
+@export
+def create_cluster(max_workers: int = 4) -> str:
+    """Creates a new Databricks cluster for running jobs.
+
+    Args:
+        max_workers: The maximum number of workers for autoscaling.
+
+    Returns:
+        The cluster ID of the created cluster.
+    """
+    logger.info("Creating cluster...")
+    cluster = workspace.clusters.create_and_wait(
+        cluster_name=f"lakeflow-{int(time.time())}",
+        spark_version=workspace.clusters.select_spark_version(long_term_support=True),
+        node_type_id=get_smallest_node_type(),
+        data_security_mode=databricks.sdk.service.compute.DataSecurityMode.SINGLE_USER,
+        autoscale=databricks.sdk.service.compute.AutoScale(
+            min_workers=1, max_workers=max_workers
+        ),
+        aws_attributes=databricks.sdk.service.compute.AwsAttributes(
+            ebs_volume_count=1, ebs_volume_size=32
+        ),
+    )
+    logger.info(f"Cluster created: {cluster.cluster_id}")
+    return cluster.cluster_id
+
+
+@export
 def create_job(
     job_name: str,
     package_name: str,
     remote_wheel_path: str,
-    max_workers: int = 4,
+    cluster_id: str,
     max_concurrent_runs: Optional[int] = None,
 ) -> str:
     """Creates a Databricks job with the specified wheel and entry point.
+
+    The job runs on the given existing cluster (starting it first if necessary).
+    Use create_cluster() to provision a cluster if you don't already have one.
 
     Args:
         job_name: The name of the job to create.
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
-        max_workers: The maximum number of workers for autoscaling.
+        cluster_id: The cluster to run the job on. The cluster is started if
+            it's not running.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
 
     Returns:
@@ -152,39 +196,32 @@ def create_job(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
 
+    ensure_cluster_running(cluster_id)
+
+    task_config = dict(
+        task_key="wheel_task",
+        existing_cluster_id=cluster_id,
+        python_wheel_task=databricks.sdk.service.jobs.PythonWheelTask(
+            entry_point="lakeflow-task",
+            package_name=package_name,
+        ),
+        libraries=[
+            databricks.sdk.service.compute.Library(whl=f"/Workspace{remote_wheel_path}")
+        ],
+    )
+
     if max_concurrent_runs is None or max_concurrent_runs == -1:
-        max_concurrent_runs = max_workers * 8
+        cluster_info = workspace.clusters.get(cluster_id)
+        if cluster_info.autoscale:
+            num_workers = cluster_info.autoscale.max_workers
+        else:
+            num_workers = cluster_info.num_workers or 1
+        max_concurrent_runs = num_workers * 8
 
     created_job = workspace.jobs.create(
         name=job_name,
         max_concurrent_runs=max_concurrent_runs,
-        tasks=[
-            databricks.sdk.service.jobs.Task(
-                task_key="wheel_task",
-                python_wheel_task=databricks.sdk.service.jobs.PythonWheelTask(
-                    entry_point="lakeflow-task",
-                    package_name=package_name,
-                ),
-                libraries=[
-                    databricks.sdk.service.compute.Library(
-                        whl=f"/Workspace{remote_wheel_path}"
-                    )
-                ],
-                new_cluster=databricks.sdk.service.compute.ClusterSpec(
-                    spark_version=workspace.clusters.select_spark_version(
-                        long_term_support=True
-                    ),
-                    node_type_id=get_smallest_node_type(),
-                    data_security_mode=databricks.sdk.service.compute.DataSecurityMode.SINGLE_USER,
-                    autoscale=databricks.sdk.service.compute.AutoScale(
-                        min_workers=1, max_workers=max_workers
-                    ),
-                    aws_attributes=databricks.sdk.service.compute.AwsAttributes(
-                        ebs_volume_count=1, ebs_volume_size=32
-                    ),
-                ),
-            )
-        ],
+        tasks=[databricks.sdk.service.jobs.Task(**task_config)],
     )
 
     logger.info(f"View Job: {workspace.config.host}/#job/{created_job.job_id}")
@@ -199,24 +236,18 @@ def create_job_from_source(
     target: Annotated[str, typer.Option("--target")] = ".",
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
+    cluster_id: Optional[str] = None,
 ) -> str:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
-    Args:
-        job_name: The name of the job to create.
-        package_name: The name of the Python package.
-        target: The path to the directory containing pyproject.toml. Defaults to ".".
-        max_workers: The maximum number of workers for autoscaling. Defaults to 4.
-        max_concurrent_runs: The maximum number of concurrent runs for the job.
-
-    Returns:
-        The ID of the created job.
+    When cluster_id is provided, the job targets that existing cluster instead
+    of creating a new one. Otherwise a new cluster is created automatically.
     """
     return create_job(
         job_name=job_name,
         package_name=package_name,
         remote_wheel_path=upload_wheel(build_wheel(target)),
-        max_workers=max_workers,
+        cluster_id=cluster_id or create_cluster(max_workers),
         max_concurrent_runs=max_concurrent_runs,
     )
 
