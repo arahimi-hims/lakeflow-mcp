@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 try:
     workspace = databricks.sdk.WorkspaceClient()
 except Exception as e:
-    logging.error(
+    logger.error(
         f"Failed to initialize Databricks WorkspaceClient: {e}. Ensure DATABRICKS_HOST and DATABRICKS_TOKEN are set."
     )
     sys.exit(1)
@@ -302,7 +302,7 @@ def get_run_logs(run_id: int) -> str:
         id = run_id
 
     logs = workspace.jobs.get_run_output(id).as_dict()
-    logging.info(logs)
+    logger.info(logs)
     return logs
 
 
