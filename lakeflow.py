@@ -3,6 +3,7 @@ from typing import Annotated, List, Optional
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,13 +35,7 @@ mcp = mcp.server.fastmcp.FastMCP(
 )
 logger = logging.getLogger(__name__)
 
-try:
-    workspace = databricks.sdk.WorkspaceClient()
-except Exception as e:
-    logger.error(
-        f"Failed to initialize Databricks WorkspaceClient: {e}. Ensure DATABRICKS_HOST and DATABRICKS_TOKEN are set."
-    )
-    sys.exit(1)
+workspace = databricks.sdk.WorkspaceClient()
 
 
 def export(func):
@@ -54,6 +49,11 @@ def export(func):
 def build_wheel(target: Annotated[str, typer.Argument()] = ".") -> str:
     """Builds the Python wheel using 'uv build --wheel'.
 
+    The wheel is built with a unique timestamp-based dev version so that
+    Databricks clusters always reinstall it (pip cache busting).  The output
+    file is renamed to a fixed filename so repeated uploads overwrite the
+    same remote path instead of accumulating copies.
+
     Args:
         target: The path to the directory containing pyproject.toml. To avoid
             confusing uv, it's best to use absolute paths.
@@ -61,20 +61,42 @@ def build_wheel(target: Annotated[str, typer.Argument()] = ".") -> str:
     Returns:
         The path to the generated wheel file.
     """
-    if not os.path.exists(os.path.join(target, "pyproject.toml")):
+    pyproject_path = os.path.join(target, "pyproject.toml")
+    if not os.path.exists(pyproject_path):
         raise ValueError(
             f"Target directory '{target}' does not contain pyproject.toml."
         )
 
+    with open(pyproject_path, "r") as f:
+        original_content = f.read()
+
+    version_re = re.compile(r'(version\s*=\s*["\'])([^"\']+)(["\'])')
+    match = version_re.search(original_content)
+    if not match:
+        raise ValueError(f"Could not find version in {pyproject_path}")
+
+    dev_version = f"{match.group(2)}.dev{int(time.time())}"
+    patched = version_re.sub(rf"\g<1>{dev_version}\g<3>", original_content, count=1)
+
     dist_dir = os.path.join(target, "dist")
     shutil.rmtree(dist_dir, ignore_errors=True)
 
-    subprocess.run("uv build --wheel", cwd=target, shell=True, check=True)
+    try:
+        with open(pyproject_path, "w") as f:
+            f.write(patched)
+        subprocess.run("uv build --wheel", cwd=target, shell=True, check=True)
+    finally:
+        # Restore original pyproject.toml even if the build fails, so we
+        # don't leave the dev version baked into the user's source tree.
+        with open(pyproject_path, "w") as f:
+            f.write(original_content)
 
     try:
-        return glob.glob(os.path.join(dist_dir, "*.whl"))[0]
+        built_wheel = glob.glob(os.path.join(dist_dir, "*.whl"))[0]
     except IndexError:
         raise FileNotFoundError(f"No wheel found in {dist_dir} after build.")
+
+    return built_wheel
 
 
 @export
