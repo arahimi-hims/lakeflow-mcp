@@ -24,14 +24,13 @@ cluster_id = lakeflow.create_cluster()
 
 # %%
 # 3. Define the Lakeflow Job configuration
-job_id = int(
-    lakeflow.create_job(
-        job_name=f"lakeflow-demo-wheel-{int(time.time())}",
-        package_name="lakeflow_demo",
-        remote_wheel_path=remote_wheel_path,
-        cluster_id=cluster_id,
-    )
+job_info = lakeflow.create_job(
+    job_name=f"lakeflow-demo-wheel-{int(time.time())}",
+    package_name="lakeflow_demo",
+    remote_wheel_path=remote_wheel_path,
+    cluster_id=cluster_id,
 )
+job_id = int(job_info.job_id)
 
 # %%
 # 4. Kick off several copies simultaneously

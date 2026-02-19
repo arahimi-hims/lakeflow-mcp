@@ -10,14 +10,13 @@ def run_ci_test_existing_cluster():
 
     os.environ["TEST_ENV_VAR"] = "test_secret_value"
 
-    job_id = int(
-        lakeflow.create_job_from_source(
-            job_name=f"ci-test-cluster-{int(time.time())}",
-            package_name="lakeflow_demo",
-            target="lakeflow_demo",
-            cluster_id=os.environ["DATABRICKS_CLUSTER_ID"],
-        )
+    job_info = lakeflow.create_job_from_source(
+        job_name=f"ci-test-cluster-{int(time.time())}",
+        package_name="lakeflow_demo",
+        target="lakeflow_demo",
+        cluster_id=os.environ["DATABRICKS_CLUSTER_ID"],
     )
+    job_id = int(job_info.job_id)
     logging.info(f"Job created with ID {job_id}")
 
     logging.info("Triggering run...")

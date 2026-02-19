@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-from typing import Annotated, List, Optional
+from typing import Annotated, List, NamedTuple, Optional
 import glob
 import logging
 import os
@@ -36,6 +36,11 @@ mcp = mcp.server.fastmcp.FastMCP(
 logger = logging.getLogger(__name__)
 
 workspace = databricks.sdk.WorkspaceClient()
+
+
+class JobInfo(NamedTuple):
+    job_id: str
+    job_url: str
 
 
 def export(func):
@@ -195,7 +200,7 @@ def create_job(
     remote_wheel_path: str,
     cluster_id: str,
     max_concurrent_runs: Optional[int] = None,
-) -> str:
+) -> JobInfo:
     """Creates a Databricks job with the specified wheel and entry point.
 
     The job runs on the given existing cluster (starting it first if necessary).
@@ -210,7 +215,7 @@ def create_job(
         max_concurrent_runs: The maximum number of concurrent runs for the job.
 
     Returns:
-        The ID of the created job.
+        A JobInfo containing the job ID and the URL to the job.
     """
     logger.info(f"Creating job: {job_name}")
 
@@ -247,9 +252,10 @@ def create_job(
         tasks=[databricks.sdk.service.jobs.Task(**task_config)],
     )
 
-    logger.info(f"View Job: {workspace.config.host}/#job/{created_job.job_id}")
+    job_url = f"{workspace.config.host}/#job/{created_job.job_id}"
+    logger.info(f"View Job: {job_url}")
     logger.info(f"Job ID: {created_job.job_id}")
-    return str(created_job.job_id)
+    return JobInfo(job_id=str(created_job.job_id), job_url=job_url)
 
 
 @export
@@ -260,7 +266,7 @@ def create_job_from_source(
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
     cluster_id: Optional[str] = None,
-) -> str:
+) -> JobInfo:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
     When cluster_id is provided, the job targets that existing cluster instead
