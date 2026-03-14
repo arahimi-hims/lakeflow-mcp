@@ -50,26 +50,41 @@ def export(func):
     return func
 
 
+def run_git(cwd: str, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+
+def get_git_hash(cwd: str) -> str:
+    if run_git(cwd, "status", "--porcelain", "--untracked-files=no"):
+        raise RuntimeError(
+            "Git repo is dirty. Commit or stash your changes before building."
+        )
+    return run_git(cwd, "rev-parse", "HEAD")
+
+
 @export
-def build_wheel(target: Annotated[str, typer.Argument()] = ".") -> str:
+def build_wheel(pyproject_dir_path: Annotated[str, typer.Argument()] = ".") -> str:
     """Builds the Python wheel using 'uv build --wheel'.
 
-    The wheel is built with a unique timestamp-based dev version so that
-    Databricks clusters always reinstall it (pip cache busting).  The output
-    file is renamed to a fixed filename so repeated uploads overwrite the
-    same remote path instead of accumulating copies.
+    The wheel is built with a dev version derived from the current git commit
+    hash so that Databricks clusters always reinstall it (pip cache busting).
+    The output file is renamed to a fixed filename so repeated uploads
+    overwrite the same remote path instead of accumulating copies.
 
     Args:
-        target: The path to the directory containing pyproject.toml. To avoid
+        pyproject_dir_path: The path to the directory containing pyproject.toml. To avoid
             confusing uv, it's best to use absolute paths.
 
     Returns:
         The path to the generated wheel file.
     """
-    pyproject_path = os.path.join(target, "pyproject.toml")
+    pyproject_path = os.path.join(pyproject_dir_path, "pyproject.toml")
     if not os.path.exists(pyproject_path):
         raise ValueError(
-            f"Target directory '{target}' does not contain pyproject.toml."
+            f"Target directory '{pyproject_dir_path}' does not contain pyproject.toml."
         )
 
     with open(pyproject_path, "r") as f:
@@ -80,16 +95,16 @@ def build_wheel(target: Annotated[str, typer.Argument()] = ".") -> str:
     if not match:
         raise ValueError(f"Could not find version in {pyproject_path}")
 
-    dev_version = f"{match.group(2)}.dev{int(time.time())}"
+    dev_version = match.group(2) + "+" + get_git_hash(pyproject_dir_path)
     patched = version_re.sub(rf"\g<1>{dev_version}\g<3>", original_content, count=1)
 
-    dist_dir = os.path.join(target, "dist")
+    dist_dir = os.path.join(pyproject_dir_path, "dist")
     shutil.rmtree(dist_dir, ignore_errors=True)
 
     try:
         with open(pyproject_path, "w") as f:
             f.write(patched)
-        subprocess.run("uv build --wheel", cwd=target, shell=True, check=True)
+        subprocess.run("uv build --wheel", cwd=pyproject_dir_path, shell=True, check=True)
     finally:
         # Restore original pyproject.toml even if the build fails, so we
         # don't leave the dev version baked into the user's source tree.
@@ -195,10 +210,11 @@ def create_cluster(max_workers: int = 4) -> str:
 
 @export
 def create_job(
-    job_name: str,
+    job_name_prefix: str,
     package_name: str,
     remote_wheel_path: str,
     cluster_id: str,
+    pyproject_dir_path: str = ".",
     max_concurrent_runs: Optional[int] = None,
 ) -> JobInfo:
     """Creates a Databricks job with the specified wheel and entry point.
@@ -207,16 +223,19 @@ def create_job(
     Use create_cluster() to provision a cluster if you don't already have one.
 
     Args:
-        job_name: The name of the job to create.
+        job_name_prefix: Prefix for the job name. The current git commit hash
+            is appended to form the full job name.
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
         cluster_id: The cluster to run the job on. The cluster is started if
             it's not running.
+        pyproject_dir_path: The path to the git repo used to derive the commit hash.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
 
     Returns:
         A JobInfo containing the job ID and the URL to the job.
     """
+    job_name = job_name_prefix + "-" + get_git_hash(pyproject_dir_path)
     logger.info(f"Creating job: {job_name}")
 
     if not remote_wheel_path.startswith("/"):
@@ -260,9 +279,9 @@ def create_job(
 
 @export
 def create_job_from_source(
-    job_name: str,
+    job_name_prefix: str,
     package_name: str,
-    target: Annotated[str, typer.Option("--target")] = ".",
+    pyproject_dir_path: Annotated[str, typer.Option("--pyproject-dir-path")] = ".",
     max_workers: int = 4,
     max_concurrent_runs: Optional[int] = None,
     cluster_id: Optional[str] = None,
@@ -273,10 +292,11 @@ def create_job_from_source(
     of creating a new one. Otherwise a new cluster is created automatically.
     """
     return create_job(
-        job_name=job_name,
+        job_name_prefix=job_name_prefix,
         package_name=package_name,
-        remote_wheel_path=upload_wheel(build_wheel(target)),
+        remote_wheel_path=upload_wheel(build_wheel(pyproject_dir_path)),
         cluster_id=cluster_id or create_cluster(max_workers),
+        pyproject_dir_path=pyproject_dir_path,
         max_concurrent_runs=max_concurrent_runs,
     )
 

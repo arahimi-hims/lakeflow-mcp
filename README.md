@@ -69,16 +69,23 @@ concrete example of how to set up a package.
 To run the package on the cluster, first build the wheel, then upload
 it, then tell Databricks to run it.
 
+To make it easier to track lineage for your artifacts and your runs, the build
+step embeds the current git commit hash into the wheel version (e.g.
+`0.1.0.devabcdef1234...`). This requires all changes in your working tree to
+bemust committed before building. Otherwise, the build will fail with an error
+asking you to commit or stash.
+
 1.  **Create the job from source**:
 
     You can use `create-job-from-source` to build, upload, and create the job.
+
     If you don't pass a `--cluster-id`, a new cluster is created automatically:
 
     ```bash
     uv run lakeflow.py create-job-from-source \
       "my-lakeflow-job" \
       "my-package" \
-      --target ~/my_project \
+      --pyproject-dir-path ~/my_project \
       --max-workers 4
     ```
 
@@ -93,7 +100,7 @@ it, then tell Databricks to run it.
     uv run lakeflow.py create-job-from-source \
       "my-lakeflow-job" \
       "my-package" \
-      --target ~/my_project \
+      --pyproject-dir-path ~/my_project \
       --cluster-id 0202-235755-w37hoxe8
     ```
 

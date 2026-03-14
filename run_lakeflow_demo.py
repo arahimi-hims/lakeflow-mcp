@@ -25,7 +25,7 @@ cluster_id = lakeflow.create_cluster()
 # %%
 # 3. Define the Lakeflow Job configuration
 job_info = lakeflow.create_job(
-    job_name=f"lakeflow-demo-wheel-{int(time.time())}",
+    job_name_prefix=f"lakeflow-demo-wheel-{int(time.time())}",
     package_name="lakeflow_demo",
     remote_wheel_path=remote_wheel_path,
     cluster_id=cluster_id,
