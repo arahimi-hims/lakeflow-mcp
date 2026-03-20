@@ -24,14 +24,15 @@ mcp = mcp.server.fastmcp.FastMCP(
     instructions="""To use this server:
 1. Build the wheel using build_wheel().
 2. Upload the wheel using upload_wheel().
-3. Create or reuse a cluster with create_cluster(), or use an existing cluster ID.
-4. Create the job with create_job(cluster_id=...) and trigger it with trigger_run().
-   Alternatively, use create_job_from_source() to do steps 1-4 in one go
-   (it creates a cluster automatically when cluster_id is not provided).
-5. Run a copy by calling trigger_run() again.
-6. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
-7. Pass secrets via trigger_run(job_id, [...], secret_env_vars=["MY_KEY"]).
-8. Get a list of running jobs using list_job_runs().""",
+3. Create the job with create_job() and trigger it with trigger_run().
+   Alternatively, use create_job_from_source() to do steps 1-3 in one go.
+   By default, each run gets its own ephemeral cluster so compute scales
+   with the number of concurrent runs. Pass cluster_id to pin runs to
+   a shared existing cluster instead.
+4. Run a copy by calling trigger_run() again.
+5. Run multiple copies with different parameters using trigger_run(job_id, ["arg1", "arg2"]).
+6. Pass secrets via trigger_run(job_id, [...], secret_env_vars=["MY_KEY"]).
+7. Get a list of running jobs using list_job_runs().""",
 )
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def export(func):
 
 def run_git(cwd: str, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True,
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
     )
     return result.stdout.strip()
 
@@ -104,7 +105,9 @@ def build_wheel(pyproject_dir_path: Annotated[str, typer.Argument()] = ".") -> s
     try:
         with open(pyproject_path, "w") as f:
             f.write(patched)
-        subprocess.run("uv build --wheel", cwd=pyproject_dir_path, shell=True, check=True)
+        subprocess.run(
+            "uv build --wheel", cwd=pyproject_dir_path, shell=True, check=True
+        )
     finally:
         # Restore original pyproject.toml even if the build fails, so we
         # don't leave the dev version baked into the user's source tree.
@@ -157,6 +160,18 @@ def get_smallest_node_type() -> str:
     smallest_node = min(suitable_nodes, key=lambda x: x.memory_mb).node_type_id
     logger.info(f"Selected Node Type: {smallest_node}")
     return smallest_node
+
+
+def _new_cluster_spec(
+    node_type_id: Optional[str] = None,
+) -> databricks.sdk.service.compute.ClusterSpec:
+    """Returns a single-node cluster spec for per-run ephemeral compute."""
+    return databricks.sdk.service.compute.ClusterSpec(
+        spark_version=workspace.clusters.select_spark_version(long_term_support=True),
+        node_type_id=node_type_id or get_smallest_node_type(),
+        num_workers=0,  # driver-only; no Spark workers needed for Python wheel tasks
+        data_security_mode=databricks.sdk.service.compute.DataSecurityMode.SINGLE_USER,
+    )
 
 
 def put_secret_safe(scope: str, key: str, value: str):
@@ -213,22 +228,29 @@ def create_job(
     job_name_prefix: str,
     package_name: str,
     remote_wheel_path: str,
-    cluster_id: str,
+    cluster_id: Optional[str] = None,
+    new_instance_type: Optional[str] = None,
     pyproject_dir_path: str = ".",
-    max_concurrent_runs: Optional[int] = None,
+    max_concurrent_runs: int = 100,
 ) -> JobInfo:
     """Creates a Databricks job with the specified wheel and entry point.
 
-    The job runs on the given existing cluster (starting it first if necessary).
-    Use create_cluster() to provision a cluster if you don't already have one.
+    When cluster_id is provided, all runs share that existing cluster.
+    When omitted, each run gets its own ephemeral single-node cluster that
+    is created at run start and terminated when the run finishes. This
+    allows the underlying infrastructure to scale horizontally with the
+    number of concurrent runs.
 
     Args:
         job_name_prefix: Prefix for the job name. The current git commit hash
             is appended to form the full job name.
         package_name: The name of the Python package.
         remote_wheel_path: The remote path to the uploaded wheel file.
-        cluster_id: The cluster to run the job on. The cluster is started if
-            it's not running.
+        cluster_id: Optional cluster to run the job on. When omitted, per-run
+            ephemeral clusters are used instead.
+        new_instance_type: AWS instance type (e.g. "g4dn.xlarge") for per-run
+            ephemeral clusters. Ignored when cluster_id is provided. Defaults
+            to the smallest available node type.
         pyproject_dir_path: The path to the git repo used to derive the commit hash.
         max_concurrent_runs: The maximum number of concurrent runs for the job.
 
@@ -243,11 +265,8 @@ def create_job(
             f"remote_wheel_path must start with '/', got: {remote_wheel_path}"
         )
 
-    ensure_cluster_running(cluster_id)
-
     task_config = dict(
         task_key="wheel_task",
-        existing_cluster_id=cluster_id,
         python_wheel_task=databricks.sdk.service.jobs.PythonWheelTask(
             entry_point="lakeflow-task",
             package_name=package_name,
@@ -257,13 +276,11 @@ def create_job(
         ],
     )
 
-    if max_concurrent_runs is None or max_concurrent_runs == -1:
-        cluster_info = workspace.clusters.get(cluster_id)
-        if cluster_info.autoscale:
-            num_workers = cluster_info.autoscale.max_workers
-        else:
-            num_workers = cluster_info.num_workers or 1
-        max_concurrent_runs = num_workers * 8
+    if cluster_id:
+        ensure_cluster_running(cluster_id)
+        task_config["existing_cluster_id"] = cluster_id
+    else:
+        task_config["new_cluster"] = _new_cluster_spec(node_type_id=new_instance_type)
 
     created_job = workspace.jobs.create(
         name=job_name,
@@ -282,20 +299,24 @@ def create_job_from_source(
     job_name_prefix: str,
     package_name: str,
     pyproject_dir_path: Annotated[str, typer.Option("--pyproject-dir-path")] = ".",
-    max_workers: int = 4,
-    max_concurrent_runs: Optional[int] = None,
+    max_concurrent_runs: int = 100,
     cluster_id: Optional[str] = None,
+    new_instance_type: Optional[str] = None,
 ) -> JobInfo:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
-    When cluster_id is provided, the job targets that existing cluster instead
-    of creating a new one. Otherwise a new cluster is created automatically.
+    When cluster_id is provided, all runs share that existing cluster.
+    When omitted (the default), each run gets its own ephemeral single-node
+    cluster so that compute scales with the number of concurrent runs.
+    Use new_instance_type to specify an AWS instance type (e.g. "g4dn.xlarge")
+    for the per-run clusters.
     """
     return create_job(
         job_name_prefix=job_name_prefix,
         package_name=package_name,
         remote_wheel_path=upload_wheel(build_wheel(pyproject_dir_path)),
-        cluster_id=cluster_id or create_cluster(max_workers),
+        cluster_id=cluster_id,
+        new_instance_type=new_instance_type,
         pyproject_dir_path=pyproject_dir_path,
         max_concurrent_runs=max_concurrent_runs,
     )
