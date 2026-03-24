@@ -232,6 +232,7 @@ def create_job(
     new_instance_type: Optional[str] = None,
     pyproject_dir_path: str = ".",
     max_concurrent_runs: int = 100,
+    entry_point: str = "lakeflow-task",
 ) -> JobInfo:
     """Creates a Databricks job with the specified wheel and entry point.
 
@@ -268,7 +269,7 @@ def create_job(
     task_config = dict(
         task_key="wheel_task",
         python_wheel_task=databricks.sdk.service.jobs.PythonWheelTask(
-            entry_point="lakeflow-task",
+            entry_point=entry_point,
             package_name=package_name,
         ),
         libraries=[
@@ -302,6 +303,7 @@ def create_job_from_source(
     max_concurrent_runs: int = 100,
     cluster_id: Optional[str] = None,
     new_instance_type: Optional[str] = None,
+    entry_point: str = "lakeflow-task",
 ) -> JobInfo:
     """Builds wheel, uploads it, and creates a Databricks job in one go.
 
@@ -319,6 +321,7 @@ def create_job_from_source(
         new_instance_type=new_instance_type,
         pyproject_dir_path=pyproject_dir_path,
         max_concurrent_runs=max_concurrent_runs,
+        entry_point=entry_point,
     )
 
 
